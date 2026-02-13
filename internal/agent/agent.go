@@ -9,23 +9,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pltanton/lingti-bot/internal/config"
+	cronpkg "github.com/pltanton/lingti-bot/internal/cron"
 	"github.com/pltanton/lingti-bot/internal/logger"
 	"github.com/pltanton/lingti-bot/internal/router"
+	"github.com/pltanton/lingti-bot/internal/skills"
 )
 
 // Agent processes messages using AI providers and tools
 type Agent struct {
-	provider Provider
-	memory   *ConversationMemory
-	sessions *SessionStore
+	provider      Provider
+	memory        *ConversationMemory
+	sessions      *SessionStore
+	autoApprove   bool
+	cronScheduler *cronpkg.Scheduler
+	currentMsg       router.Message // set during HandleMessage for cron_create context
+	cronCreatedCount int            // tracks cron_create calls per HandleMessage turn
 }
 
 // Config holds agent configuration
 type Config struct {
-	Provider string // "claude" or "deepseek" (default: "claude")
-	APIKey   string
-	BaseURL  string // Custom API base URL (optional)
-	Model    string // Model name (optional, uses provider default)
+	Provider    string // "claude" or "deepseek" (default: "claude")
+	APIKey      string
+	BaseURL     string // Custom API base URL (optional)
+	Model       string // Model name (optional, uses provider default)
+	AutoApprove bool   // Skip all confirmation prompts (default: false)
 }
 
 // New creates a new Agent with the specified provider
@@ -40,15 +48,52 @@ func New(cfg Config) (*Agent, error) {
 	}
 
 	return &Agent{
-		provider: provider,
-		memory:   NewMemory(50, 60*time.Minute), // Keep 50 messages, 60 min TTL
-		sessions: NewSessionStore(),
+		provider:    provider,
+		memory:      NewMemory(50, 60*time.Minute), // Keep 50 messages, 60 min TTL
+		sessions:    NewSessionStore(),
+		autoApprove: cfg.AutoApprove,
 	}, nil
+}
+
+// openaiCompatProviders maps provider names to their default base URLs and models.
+var openaiCompatProviders = map[string]struct {
+	baseURL string
+	model   string
+}{
+	"minimax":    {"https://api.minimax.chat/v1", "MiniMax-Text-01"},
+	"doubao":     {"https://ark.cn-beijing.volces.com/api/v3", "doubao-pro-32k"},
+	"zhipu":      {"https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"},
+	"openai":     {"https://api.openai.com/v1", "gpt-4o"},
+	"gemini":     {"https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash"},
+	"yi":         {"https://api.lingyiwanwu.com/v1", "yi-large"},
+	"stepfun":    {"https://api.stepfun.com/v1", "step-2-16k"},
+	"siliconflow": {"https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-72B-Instruct"},
+	"grok":       {"https://api.x.ai/v1", "grok-2-latest"},
+	"baichuan":   {"https://api.baichuan-ai.com/v1", "Baichuan4"},
+	"spark":      {"https://spark-api-open.xf-yun.com/v1", "generalv3.5"},
+}
+
+// openaiCompatAliases maps alternative names to canonical provider names.
+var openaiCompatAliases = map[string]string{
+	"glm":          "zhipu",
+	"chatglm":      "zhipu",
+	"gpt":          "openai",
+	"chatgpt":      "openai",
+	"lingyiwanwu":  "yi",
+	"wanwu":        "yi",
+	"google":       "gemini",
+	"xai":          "grok",
+	"bytedance":    "doubao",
+	"volcengine":   "doubao",
+	"iflytek":      "spark",
+	"xunfei":       "spark",
 }
 
 // createProvider creates the appropriate AI provider based on config
 func createProvider(cfg Config) (Provider, error) {
-	switch strings.ToLower(cfg.Provider) {
+	name := strings.ToLower(cfg.Provider)
+
+	switch name {
 	case "deepseek":
 		return NewDeepSeekProvider(DeepSeekConfig{
 			APIKey:  cfg.APIKey,
@@ -61,6 +106,12 @@ func createProvider(cfg Config) (Provider, error) {
 			BaseURL: cfg.BaseURL,
 			Model:   cfg.Model,
 		})
+	case "qwen", "qianwen", "tongyi":
+		return NewQwenProvider(QwenConfig{
+			APIKey:  cfg.APIKey,
+			BaseURL: cfg.BaseURL,
+			Model:   cfg.Model,
+		})
 	case "claude", "anthropic", "":
 		return NewClaudeProvider(ClaudeConfig{
 			APIKey:  cfg.APIKey,
@@ -68,7 +119,22 @@ func createProvider(cfg Config) (Provider, error) {
 			Model:   cfg.Model,
 		})
 	default:
-		return nil, fmt.Errorf("unknown provider: %s (supported: claude, deepseek, kimi)", cfg.Provider)
+		// Check aliases
+		if canonical, ok := openaiCompatAliases[name]; ok {
+			name = canonical
+		}
+		// Check OpenAI-compatible providers
+		if defaults, ok := openaiCompatProviders[name]; ok {
+			return NewOpenAICompatProvider(OpenAICompatConfig{
+				ProviderName: name,
+				APIKey:       cfg.APIKey,
+				BaseURL:      cfg.BaseURL,
+				Model:        cfg.Model,
+				DefaultURL:   defaults.baseURL,
+				DefaultModel: defaults.model,
+			})
+		}
+		return nil, fmt.Errorf("unknown provider: %s (supported: claude, deepseek, kimi, qwen, minimax, doubao, zhipu, openai, gemini, yi, stepfun, siliconflow, grok, baichuan, spark)", cfg.Provider)
 	}
 }
 
@@ -141,11 +207,10 @@ func (a *Agent) handleBuiltinCommand(msg router.Message) (router.Response, bool)
 		}, true
 
 	case "/tools", "工具", "工具列表":
-		return router.Response{
-			Text: `可用工具:
+		toolsText := `可用工具:
 
 📁 文件操作:
-  file_send, file_list, file_read, file_trash, file_list_old
+  file_send, file_list, file_read, file_write, file_trash, file_list_old
 
 📅 日历 (macOS):
   calendar_today, calendar_list_events, calendar_create_event
@@ -177,8 +242,11 @@ func (a *Agent) handleBuiltinCommand(msg router.Message) (router.Response, bool)
   music_now_playing, music_volume, music_search
 
 💻 系统:
-  system_info, shell_execute, process_list`,
-		}, true
+  system_info, shell_execute, process_list
+
+⏰ 定时任务:
+  cron_create, cron_list, cron_delete, cron_pause, cron_resume` + formatSkillsSection()
+		return router.Response{Text: toolsText}, true
 
 	case "/verbose on", "详细模式开":
 		a.sessions.SetVerbose(convKey, true)
@@ -208,8 +276,38 @@ func (a *Agent) handleBuiltinCommand(msg router.Message) (router.Response, bool)
 	return router.Response{}, false
 }
 
+// SetCronScheduler sets the cron scheduler for the agent
+func (a *Agent) SetCronScheduler(s *cronpkg.Scheduler) {
+	a.cronScheduler = s
+}
+
+// ExecuteTool implements the cron.ToolExecutor interface
+func (a *Agent) ExecuteTool(ctx context.Context, toolName string, arguments map[string]any) (any, error) {
+	result := callToolDirect(ctx, toolName, arguments)
+	return result, nil
+}
+
+// ExecutePrompt runs a full AI conversation with tools and returns the text response.
+// Used by cron scheduler for prompt-based jobs.
+func (a *Agent) ExecutePrompt(ctx context.Context, platform, channelID, userID, prompt string) (string, error) {
+	msg := router.Message{
+		Platform:  platform,
+		ChannelID: channelID,
+		UserID:    userID,
+		Username:  "cron",
+		Text:      prompt,
+	}
+	resp, err := a.HandleMessage(ctx, msg)
+	if err != nil {
+		return "", err
+	}
+	return resp.Text, nil
+}
+
 // HandleMessage processes a message and returns a response
 func (a *Agent) HandleMessage(ctx context.Context, msg router.Message) (router.Response, error) {
+	a.currentMsg = msg
+	a.cronCreatedCount = 0
 	logger.Info("[Agent] Processing message from %s: %s (provider: %s)", msg.Username, msg.Text, a.provider.Name())
 
 	// Handle built-in commands
@@ -225,7 +323,7 @@ func (a *Agent) HandleMessage(ctx context.Context, msg router.Message) (router.R
 
 	// Get conversation history
 	history := a.memory.GetHistory(convKey)
-	logger.Debug("[Agent] Conversation key: %s, history messages: %d", convKey, len(history))
+	logger.Trace("[Agent] Conversation key: %s, history messages: %d", convKey, len(history))
 
 	// Create messages with history
 	messages := make([]Message, 0, len(history)+1)
@@ -245,8 +343,23 @@ func (a *Agent) HandleMessage(ctx context.Context, msg router.Message) (router.R
 	settings := a.sessions.Get(convKey)
 	thinkingPrompt := ThinkingPrompt(settings.ThinkingLevel)
 
+	// Auto-approval mode notice
+	autoApprovalNotice := ""
+	if a.autoApprove {
+		autoApprovalNotice = `
+
+## 🚀 AUTO-APPROVAL MODE ENABLED
+**You are running in auto-approval mode. DO NOT ask for permission before taking actions.**
+- Execute file writes, deletions, and modifications immediately without confirmation
+- Run shell commands directly without asking first
+- Create, modify, or delete files as requested without hesitation
+- The user has explicitly disabled all safety prompts with --yes flag
+- Only skip actions if they are IMPOSSIBLE or DANGEROUS (e.g., rm -rf /, destructive operations)
+- For normal operations (file writes, reads, modifications), proceed immediately`
+	}
+
 	// System prompt with actual paths
-	systemPrompt := fmt.Sprintf(`You are 灵缇 (Lingti), a helpful AI assistant running on the user's computer.
+	systemPrompt := fmt.Sprintf(`You are 灵缇 (Lingti), a helpful AI assistant running on the user's computer.%s
 
 ## System Environment
 - Operating System: %s
@@ -263,11 +376,12 @@ func (a *Agent) HandleMessage(ctx context.Context, msg router.Message) (router.R
 - file_send: Send/transfer a file to the user via messaging platform
 - file_list: List directory contents (use ~/Desktop for desktop)
 - file_read: Read file contents
+- file_write: Write content to a file (creates parent directories if needed)
 - file_trash: Move files to trash (for delete operations)
 - file_list_old: Find old files not modified for N days
 
 ### Calendar (macOS)
-- calendar_today: Get today's events
+- calendar_today: List today's calendar events/meetings (NOT for answering date/time questions)
 - calendar_list_events: List upcoming events
 - calendar_create_event: Create new event
 - calendar_search: Search events
@@ -311,6 +425,13 @@ func (a *Agent) HandleMessage(ctx context.Context, msg router.Message) (router.R
 - music_volume: Set volume
 - music_search: Search and play
 
+### Scheduled Tasks (Cron)
+- cron_create: Create ONE scheduled task with 'prompt' parameter. The AI runs a full conversation each trigger (can use web_search, weather, etc.) and sends the result to the user. For raw tool execution, use 'tool'+'arguments' instead.
+- cron_list: List all scheduled tasks with their status
+- cron_delete: Delete a scheduled task by ID
+- cron_pause: Pause a scheduled task
+- cron_resume: Resume a paused scheduled task
+
 ### Browser Automation (snapshot-then-act pattern)
 - browser_start: Start new browser or connect to existing Chrome via cdp_url (e.g. "127.0.0.1:9222")
 - browser_navigate: Navigate to a URL (auto-connects to Chrome on port 9222 if available, otherwise launches new)
@@ -353,8 +474,12 @@ Then re-snapshot and continue.
 5. **Be concise** - Short, helpful responses
 6. **NEVER claim success without tool execution** - If user asks to create/add/delete something, you MUST call the corresponding tool. Never say "已创建/已添加/已删除" unless you actually called the tool and it succeeded.
 7. **Date format for calendar** - When creating calendar events, use YYYY-MM-DD HH:MM format. Convert relative dates (明天/下周一) to absolute dates based on today's date.
+8. **CRITICAL: Cron job rules** - When user asks for periodic/scheduled tasks:
+   - Call cron_create EXACTLY ONCE with the 'prompt' parameter.
+   - Example: cron_create(name="motivation", schedule="43 * * * *", prompt="生成一条独特的编程激励鸡汤，鼓励用户写代码创造新产品")
+   - NEVER call cron_create multiple times. NEVER use shell_execute or file_write for cron tasks.
 
-Current date: %s%s`, time.Now().Format("2006-01-02"), runtime.GOOS, runtime.GOARCH, homeDir, homeDir, homeDir, homeDir, msg.Username, thinkingPrompt)
+Current date: %s%s%s`, autoApprovalNotice, runtime.GOOS, runtime.GOARCH, homeDir, homeDir, homeDir, homeDir, msg.Username, time.Now().Format("2006-01-02"), thinkingPrompt, formatSkillsSection())
 
 	// Call AI provider
 	resp, err := a.provider.Chat(ctx, ChatRequest{
@@ -408,9 +533,31 @@ Current date: %s%s`, time.Now().Format("2006-01-02"), runtime.GOOS, runtime.GOAR
 	)
 
 	// Log response at verbose level
-	logger.Verbose("[Agent] Response: %s", resp.Content)
+	logger.Debug("[Agent] Response: %s", resp.Content)
 
 	return router.Response{Text: resp.Content, Files: pendingFiles}, nil
+}
+
+// formatSkillsSection returns a formatted string listing eligible skills, or empty if none.
+func formatSkillsSection() string {
+	cfg, err := config.Load()
+	var disabled, extraDirs []string
+	if err == nil {
+		disabled = cfg.Skills.Disabled
+		extraDirs = cfg.Skills.ExtraDirs
+	}
+	report := skills.BuildStatusReport(disabled, extraDirs)
+	eligible := report.EligibleSkills()
+	if len(eligible) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\nSkills:\n")
+	for _, s := range eligible {
+		fmt.Fprintf(&sb, "  %s: %s\n", s.Name, s.Description)
+	}
+	fmt.Fprintf(&sb, "\n安装 Skill: 将 skill 文件夹放入 %s 即可", skills.ShortenHomePath(report.ManagedDir))
+	return sb.String()
 }
 
 // buildToolsList creates the tools list for the AI provider
@@ -436,6 +583,18 @@ func (a *Agent) buildToolsList() []Tool {
 				"type":       "object",
 				"properties": map[string]any{"path": map[string]string{"type": "string", "description": "Path to the file (use ~ for home, e.g., ~/Desktop/file.txt)"}},
 				"required":   []string{"path"},
+			}),
+		},
+		{
+			Name:        "file_write",
+			Description: "Write content to a file. Creates parent directories if needed. Use ~ for home directory.",
+			InputSchema: jsonSchema(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path":    map[string]string{"type": "string", "description": "Path to the file (use ~ for home, e.g., ~/Desktop/file.txt)"},
+					"content": map[string]string{"type": "string", "description": "Content to write to the file"},
+				},
+				"required": []string{"path", "content"},
 			}),
 		},
 		{
@@ -985,6 +1144,55 @@ func (a *Agent) buildToolsList() []Tool {
 			Description: "Close the browser",
 			InputSchema: jsonSchema(map[string]any{"type": "object", "properties": map[string]any{}}),
 		},
+
+		// === SCHEDULED TASKS (CRON) ===
+		{
+			Name:        "cron_create",
+			Description: "Create ONE scheduled task. Use 'prompt' to describe what the AI should do each time (generate text, search web, check weather, etc.). The AI runs a full conversation each trigger, so content is fresh every time. Use 'tool'+'arguments' only for raw MCP tool execution without AI. Schedule uses standard 5-field cron: minute hour day month weekday.",
+			InputSchema: jsonSchema(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":      map[string]string{"type": "string", "description": "Human-readable task name"},
+					"schedule":  map[string]string{"type": "string", "description": "Cron expression (e.g., '43 * * * *' for every hour at :43, '0 9 * * 1-5' for weekdays at 9am)"},
+					"prompt":    map[string]string{"type": "string", "description": "What the AI should do each time this job triggers. AI runs a full conversation and sends the result to the user. Example: '生成一条独特的编程激励鸡汤'"},
+					"tool":      map[string]string{"type": "string", "description": "MCP tool to execute periodically (for raw tool execution without AI)"},
+					"arguments": map[string]string{"type": "object", "description": "Arguments for the tool (when using tool parameter)"},
+				},
+				"required": []string{"name", "schedule"},
+			}),
+		},
+		{
+			Name:        "cron_list",
+			Description: "List all scheduled tasks with their status, schedule, and last run time",
+			InputSchema: jsonSchema(map[string]any{"type": "object", "properties": map[string]any{}}),
+		},
+		{
+			Name:        "cron_delete",
+			Description: "Delete a scheduled task by its ID",
+			InputSchema: jsonSchema(map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"id": map[string]string{"type": "string", "description": "Task ID to delete"}},
+				"required":   []string{"id"},
+			}),
+		},
+		{
+			Name:        "cron_pause",
+			Description: "Pause a scheduled task (it will stop running until resumed)",
+			InputSchema: jsonSchema(map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"id": map[string]string{"type": "string", "description": "Task ID to pause"}},
+				"required":   []string{"id"},
+			}),
+		},
+		{
+			Name:        "cron_resume",
+			Description: "Resume a paused scheduled task",
+			InputSchema: jsonSchema(map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"id": map[string]string{"type": "string", "description": "Task ID to resume"}},
+				"required":   []string{"id"},
+			}),
+		},
 	}
 }
 
@@ -1028,14 +1236,28 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 		return fmt.Sprintf("Error parsing arguments: %v", err)
 	}
 
+	// Handle cron tools that need Agent context
+	switch name {
+	case "cron_create":
+		return a.executeCronCreate(args)
+	case "cron_list":
+		return a.executeCronList()
+	case "cron_delete":
+		return a.executeCronDelete(args)
+	case "cron_pause":
+		return a.executeCronPause(args)
+	case "cron_resume":
+		return a.executeCronResume(args)
+	}
+
 	// Call tools directly
 	result := callToolDirect(ctx, name, args)
 
 	// Log result at verbose level (truncate if too long)
 	if len(result) > 500 {
-		logger.Verbose("[Agent] Tool %s result: %s... (truncated)", name, result[:500])
+		logger.Debug("[Agent] Tool %s result: %s... (truncated)", name, result[:500])
 	} else {
-		logger.Verbose("[Agent] Tool %s result: %s", name, result)
+		logger.Debug("[Agent] Tool %s result: %s", name, result)
 	}
 
 	return result
@@ -1069,6 +1291,16 @@ func callToolDirect(ctx context.Context, name string, args map[string]any) strin
 			path = p
 		}
 		return executeFileRead(ctx, path)
+	case "file_write":
+		path := ""
+		content := ""
+		if p, ok := args["path"].(string); ok {
+			path = p
+		}
+		if c, ok := args["content"].(string); ok {
+			content = c
+		}
+		return executeFileWrite(ctx, path, content)
 
 	// Calendar
 	case "calendar_today":

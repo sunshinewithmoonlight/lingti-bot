@@ -161,16 +161,32 @@ func executeFileRead(ctx context.Context, path string) string {
 	return extractText(result)
 }
 
+// executeFileWrite writes content to a file
+func executeFileWrite(ctx context.Context, path string, content string) string {
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"path":    path,
+		"content": content,
+	}
+
+	result, err := tools.FileWrite(ctx, req)
+	if err != nil {
+		return "Error: " + err.Error()
+	}
+
+	return extractText(result)
+}
+
 // executeShell runs the shell_execute tool
 func executeShell(ctx context.Context, command string) string {
-	logger.Verbose("[Shell] Executing: %s", command)
+	logger.Debug("[Shell] Executing: %s", command)
 
 	// Safety check
 	blocked := []string{"rm -rf /", "mkfs", "dd if="}
 	cmdLower := strings.ToLower(command)
 	for _, b := range blocked {
 		if strings.Contains(cmdLower, b) {
-			logger.Verbose("[Shell] Command blocked for safety")
+			logger.Debug("[Shell] Command blocked for safety")
 			return "Command blocked for safety"
 		}
 	}
@@ -200,9 +216,9 @@ func executeShell(ctx context.Context, command string) string {
 
 	// Log result at verbose level (truncate if too long)
 	if len(output) > 500 {
-		logger.Verbose("[Shell] Output: %s... (truncated)", output[:500])
+		logger.Debug("[Shell] Output: %s... (truncated)", output[:500])
 	} else {
-		logger.Verbose("[Shell] Output: %s", output)
+		logger.Debug("[Shell] Output: %s", output)
 	}
 
 	return output

@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var logLevel string
+var (
+	logLevel    string
+	autoApprove bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "lingti-bot",
@@ -35,7 +38,14 @@ It provides tools for:
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log", "info",
-		"Log level: silent, info, verbose, very-verbose")
+		"Log level: trace, debug, info, warn, error, fatal, panic")
+	rootCmd.PersistentFlags().BoolVarP(&autoApprove, "yes", "y", false,
+		"Automatically approve all operations without prompting (skip security checks)")
+}
+
+// IsAutoApprove returns true if auto-approve mode is enabled globally
+func IsAutoApprove() bool {
+	return autoApprove
 }
 
 func Execute() {

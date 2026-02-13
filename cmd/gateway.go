@@ -45,7 +45,7 @@ func init() {
 
 	gatewayCmd.Flags().StringVar(&gatewayAddr, "addr", "", "Gateway address (or GATEWAY_ADDR env, default: :18789)")
 	gatewayCmd.Flags().StringVar(&gatewayAuthToken, "auth-token", "", "Authentication token (or GATEWAY_AUTH_TOKEN env)")
-	gatewayCmd.Flags().StringVar(&aiProvider, "provider", "", "AI provider: claude, deepseek, kimi (or AI_PROVIDER env)")
+	gatewayCmd.Flags().StringVar(&aiProvider, "provider", "", "AI provider: claude, deepseek, kimi, qwen (or AI_PROVIDER env)")
 	gatewayCmd.Flags().StringVar(&aiAPIKey, "api-key", "", "AI API Key (or AI_API_KEY env)")
 	gatewayCmd.Flags().StringVar(&aiBaseURL, "base-url", "", "AI API base URL (or AI_BASE_URL env)")
 	gatewayCmd.Flags().StringVar(&aiModel, "model", "", "Model name (or AI_MODEL env)")
@@ -152,7 +152,7 @@ func runGateway(cmd *cobra.Command, args []string) {
 
 	go func() {
 		if err := gw.Start(ctx); err != nil {
-			logger.Info("Gateway error: %v", err)
+			logger.Error("Gateway error: %v", err)
 		}
 	}()
 

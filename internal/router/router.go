@@ -3,7 +3,9 @@ package router
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/pltanton/lingti-bot/internal/logger"
 )
@@ -84,7 +86,8 @@ func (r *Router) Register(platform Platform) {
 
 // handleMessage processes an incoming message
 func (r *Router) handleMessage(msg Message) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 
 	logger.Info("[Router] Message from %s/%s: %s", msg.Platform, msg.Username, msg.Text)
 
@@ -92,7 +95,7 @@ func (r *Router) handleMessage(msg Message) {
 	resp, err := r.handler(ctx, msg)
 	if err != nil {
 		logger.Error("[Router] Error handling message: %v", err)
-		resp = Response{Text: "Sorry, I encountered an error processing your request."}
+		resp = Response{Text: friendlyError(err)}
 	}
 
 	// Send response back to the platform
@@ -155,9 +158,39 @@ func (r *Router) Stop() error {
 	return nil
 }
 
+// SendToUser sends a proactive message to a user on a specific platform
+func (r *Router) SendToUser(platformName, channelID string, resp Response) error {
+	r.mu.RLock()
+	platform, ok := r.platforms[platformName]
+	r.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("platform %s not registered", platformName)
+	}
+	return platform.Send(context.Background(), channelID, resp)
+}
+
 // Wait blocks until the router is stopped
 func (r *Router) Wait() {
 	if r.ctx != nil {
 		<-r.ctx.Done()
+	}
+}
+
+// friendlyError converts AI provider errors into user-facing messages with actionable links.
+func friendlyError(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "overdue-payment") || strings.Contains(msg, "account is in good standing"):
+		return "AI 服务账户欠费，请前往充值: https://usercenter2.aliyun.com/finance/fund-management"
+	case strings.Contains(msg, "invalid_api_key") || strings.Contains(msg, "Incorrect API key"):
+		return "AI API Key 无效，请检查配置。"
+	case strings.Contains(msg, "rate_limit") || strings.Contains(msg, "Rate limit"):
+		return "AI 请求频率超限，请稍后再试。"
+	case strings.Contains(msg, "only authorized for use with Claude Code"):
+		return "Claude Setup Token 仅限 Claude Code 使用，请改用 API Key (console.anthropic.com)。"
+	case strings.Contains(msg, "unexpected EOF") || msg == "EOF" || strings.Contains(msg, "connection reset"):
+		return "AI 服务连接中断，请稍后重试。"
+	default:
+		return fmt.Sprintf("处理消息时出错: %v", err)
 	}
 }

@@ -58,7 +58,7 @@ func init() {
 	voiceCmd.Flags().StringVarP(&voiceLanguage, "language", "l", "zh", "Language for speech recognition (default: zh)")
 	voiceCmd.Flags().StringVar(&voiceProvider, "provider", "", "Voice provider: system, openai (or VOICE_PROVIDER env)")
 	voiceCmd.Flags().StringVar(&voiceAPIKey, "voice-api-key", "", "Voice API key (or VOICE_API_KEY env)")
-	voiceCmd.Flags().StringVar(&aiProvider, "ai-provider", "", "AI provider: claude, deepseek, kimi (or AI_PROVIDER env)")
+	voiceCmd.Flags().StringVar(&aiProvider, "ai-provider", "", "AI provider: claude, deepseek, kimi, qwen (or AI_PROVIDER env)")
 	voiceCmd.Flags().StringVar(&aiAPIKey, "api-key", "", "AI API Key (or AI_API_KEY env)")
 	voiceCmd.Flags().StringVar(&aiBaseURL, "base-url", "", "AI API base URL (or AI_BASE_URL env)")
 	voiceCmd.Flags().StringVar(&aiModel, "model", "", "Model name (or AI_MODEL env)")
@@ -151,7 +151,7 @@ func runVoice(cmd *cobra.Command, args []string) {
 			Voice:    voiceName,
 		})
 		if err != nil {
-			logger.Verbose("Warning: Failed to create speaker: %v (responses will be text only)", err)
+			logger.Warn("Failed to create speaker: %v (responses will be text only)", err)
 			speakResponse = false
 		}
 	}
@@ -266,7 +266,7 @@ func runVoice(cmd *cobra.Command, args []string) {
 		if speakResponse && speaker != nil {
 			fmt.Println("🔊 Speaking...")
 			if err := speaker.Speak(ctx, response.Text); err != nil {
-				logger.Verbose("Warning: TTS failed: %v", err)
+				logger.Warn("TTS failed: %v", err)
 			}
 		}
 	}

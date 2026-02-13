@@ -6,9 +6,12 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/pltanton/lingti-bot/internal/agent"
+	"github.com/pltanton/lingti-bot/internal/config"
+	cronpkg "github.com/pltanton/lingti-bot/internal/cron"
 	"github.com/pltanton/lingti-bot/internal/platforms/relay"
 	"github.com/pltanton/lingti-bot/internal/router"
 	"github.com/spf13/cobra"
@@ -29,6 +32,9 @@ var (
 	relayWeComSecret  string
 	relayWeComToken   string
 	relayWeComAESKey  string
+	// WeChat OA credentials
+	relayWeChatAppID     string
+	relayWeChatAppSecret string
 )
 
 var relayCmd = &cobra.Command{
@@ -82,7 +88,7 @@ Environment variables:
   RELAY_PLATFORM       Alternative to --platform
   RELAY_SERVER_URL     Custom WebSocket server URL
   RELAY_WEBHOOK_URL    Custom webhook URL
-  AI_PROVIDER          AI provider: claude or deepseek (default: claude)
+  AI_PROVIDER          AI provider: claude, deepseek, kimi, qwen (default: claude)
   AI_API_KEY           AI API key
   AI_BASE_URL          Custom API base URL
   AI_MODEL             Model name`,
@@ -96,7 +102,7 @@ func init() {
 	relayCmd.Flags().StringVar(&relayPlatform, "platform", "", "Platform: feishu, slack, wechat, or wecom (required, or RELAY_PLATFORM env)")
 	relayCmd.Flags().StringVar(&relayServerURL, "server", "", "WebSocket URL (default: wss://bot.lingti.com/ws, or RELAY_SERVER_URL env)")
 	relayCmd.Flags().StringVar(&relayWebhookURL, "webhook", "", "Webhook URL (default: https://bot.lingti.com/webhook, or RELAY_WEBHOOK_URL env)")
-	relayCmd.Flags().StringVar(&relayAIProvider, "provider", "", "AI provider: claude or deepseek (or AI_PROVIDER env)")
+	relayCmd.Flags().StringVar(&relayAIProvider, "provider", "", "AI provider: claude, deepseek, kimi, qwen (or AI_PROVIDER env)")
 	relayCmd.Flags().StringVar(&relayAPIKey, "api-key", "", "AI API key (or AI_API_KEY env)")
 	relayCmd.Flags().StringVar(&relayBaseURL, "base-url", "", "Custom API base URL (or AI_BASE_URL env)")
 	relayCmd.Flags().StringVar(&relayModel, "model", "", "Model name (or AI_MODEL env)")
@@ -107,6 +113,10 @@ func init() {
 	relayCmd.Flags().StringVar(&relayWeComSecret, "wecom-secret", "", "WeCom Secret (or WECOM_SECRET env)")
 	relayCmd.Flags().StringVar(&relayWeComToken, "wecom-token", "", "WeCom Callback Token (or WECOM_TOKEN env)")
 	relayCmd.Flags().StringVar(&relayWeComAESKey, "wecom-aes-key", "", "WeCom Encoding AES Key (or WECOM_AES_KEY env)")
+
+	// WeChat OA credentials
+	relayCmd.Flags().StringVar(&relayWeChatAppID, "wechat-app-id", "", "WeChat OA App ID (or WECHAT_APP_ID env)")
+	relayCmd.Flags().StringVar(&relayWeChatAppSecret, "wechat-app-secret", "", "WeChat OA App Secret (or WECHAT_APP_SECRET env)")
 }
 
 func runRelay(cmd *cobra.Command, args []string) {
@@ -128,7 +138,10 @@ func runRelay(cmd *cobra.Command, args []string) {
 	}
 	if relayAPIKey == "" {
 		relayAPIKey = os.Getenv("AI_API_KEY")
-		// Fallback to legacy env var
+		// Fallback: ANTHROPIC_OAUTH_TOKEN (setup token) > ANTHROPIC_API_KEY
+		if relayAPIKey == "" {
+			relayAPIKey = os.Getenv("ANTHROPIC_OAUTH_TOKEN")
+		}
 		if relayAPIKey == "" {
 			relayAPIKey = os.Getenv("ANTHROPIC_API_KEY")
 		}
@@ -161,6 +174,64 @@ func runRelay(cmd *cobra.Command, args []string) {
 	}
 	if relayWeComAESKey == "" {
 		relayWeComAESKey = os.Getenv("WECOM_AES_KEY")
+	}
+
+	// Get WeChat OA credentials from flags or environment
+	if relayWeChatAppID == "" {
+		relayWeChatAppID = os.Getenv("WECHAT_APP_ID")
+	}
+	if relayWeChatAppSecret == "" {
+		relayWeChatAppSecret = os.Getenv("WECHAT_APP_SECRET")
+	}
+
+	// Fallback to saved config file
+	if savedCfg, err := config.Load(); err == nil {
+		if relayAIProvider == "" {
+			relayAIProvider = savedCfg.AI.Provider
+		}
+		if relayAPIKey == "" {
+			relayAPIKey = savedCfg.AI.APIKey
+		}
+		if relayBaseURL == "" {
+			relayBaseURL = savedCfg.AI.BaseURL
+		}
+		if relayModel == "" {
+			relayModel = savedCfg.AI.Model
+		}
+		// Read relay-specific config (platform, user-id) from saved config
+		if relayPlatform == "" && savedCfg.Relay.Platform != "" {
+			relayPlatform = savedCfg.Relay.Platform
+		}
+		if relayUserID == "" && savedCfg.Relay.UserID != "" {
+			relayUserID = savedCfg.Relay.UserID
+		}
+		if relayPlatform == "" && savedCfg.Mode == "relay" {
+			// Infer platform from saved platform credentials
+			if savedCfg.Platforms.WeCom.CorpID != "" {
+				relayPlatform = "wecom"
+			}
+		}
+		if relayWeComCorpID == "" {
+			relayWeComCorpID = savedCfg.Platforms.WeCom.CorpID
+		}
+		if relayWeComAgentID == "" {
+			relayWeComAgentID = savedCfg.Platforms.WeCom.AgentID
+		}
+		if relayWeComSecret == "" {
+			relayWeComSecret = savedCfg.Platforms.WeCom.Secret
+		}
+		if relayWeComToken == "" {
+			relayWeComToken = savedCfg.Platforms.WeCom.Token
+		}
+		if relayWeComAESKey == "" {
+			relayWeComAESKey = savedCfg.Platforms.WeCom.AESKey
+		}
+		if relayWeChatAppID == "" {
+			relayWeChatAppID = savedCfg.Platforms.WeChat.AppID
+		}
+		if relayWeChatAppSecret == "" {
+			relayWeChatAppSecret = savedCfg.Platforms.WeChat.AppSecret
+		}
 	}
 
 	// Validate required parameters
@@ -247,6 +318,20 @@ func runRelay(cmd *cobra.Command, args []string) {
 	// Create the router with the agent as message handler
 	r := router.New(aiAgent.HandleMessage)
 
+	// Initialize cron scheduler
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = os.TempDir()
+	}
+	cronPath := filepath.Join(homeDir, ".lingti", "crons.json")
+	cronStore := cronpkg.NewStore(cronPath)
+	cronNotifier := agent.NewRouterCronNotifier(r)
+	cronScheduler := cronpkg.NewScheduler(cronStore, aiAgent, aiAgent, cronNotifier)
+	aiAgent.SetCronScheduler(cronScheduler)
+	if err := cronScheduler.Start(); err != nil {
+		log.Printf("Warning: Failed to start cron scheduler: %v", err)
+	}
+
 	// Create and register relay platform
 	relayPlatformInstance, err := relay.New(relay.Config{
 		UserID:       relayUserID,
@@ -255,11 +340,13 @@ func runRelay(cmd *cobra.Command, args []string) {
 		WebhookURL:   relayWebhookURL,
 		AIProvider:   providerName,
 		AIModel:      modelName,
-		WeComCorpID:  relayWeComCorpID,
-		WeComAgentID: relayWeComAgentID,
-		WeComSecret:  relayWeComSecret,
-		WeComToken:   relayWeComToken,
-		WeComAESKey:  relayWeComAESKey,
+		WeComCorpID:     relayWeComCorpID,
+		WeComAgentID:    relayWeComAgentID,
+		WeComSecret:     relayWeComSecret,
+		WeComToken:      relayWeComToken,
+		WeComAESKey:     relayWeComAESKey,
+		WeChatAppID:     relayWeChatAppID,
+		WeChatAppSecret: relayWeChatAppSecret,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating relay platform: %v\n", err)
@@ -286,5 +373,6 @@ func runRelay(cmd *cobra.Command, args []string) {
 	<-sigCh
 
 	log.Println("Shutting down...")
+	cronScheduler.Stop()
 	r.Stop()
 }

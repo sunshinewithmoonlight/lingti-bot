@@ -1,19 +1,52 @@
-# lingti-bot (灵小缇)
+[English](./README_EN.md) | 中文
 
-> 🚀 **[更适合中国宝宝体质](docs/为何更适合中国宝宝体质.md)的 AI Bot，让 AI Bot 接入更简单**
+---
+
+# lingti-bot (灵小缇 [cli.lingti.com/bot](https://cli.lingti.com/bot))
+
+> 🐕⚡「**极简至上 效率为王 一次编译 到处执行 极速接入**」的 AI Bot
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/官网-cli.lingti.com-blue?style=flat)](https://cli.lingti.com/bot)
 
-**灵小缇** 是一个集 **MCP Server**、**多平台消息网关**、**丰富工具集**、**智能对话**、**语音交互**于一体的 AI Bot 平台。微信、飞书等平台秒接入，兼具 [OpenClaw](docs/openclaw-reference.md) 式灵活接入。查看 [开发路线图](docs/roadmap.md) 了解更多功能规划。
+**灵小缇** 是一个集 **MCP Server**、**多平台消息网关**、**丰富工具集**、**智能对话**、**语音交互**于一体的 AI Bot 平台。
 
-> **为什么叫"灵小缇"？** 灵缇犬（Greyhound）是世界上跑得最快的犬，以敏捷、忠诚著称。灵小缇同样敏捷高效，是你忠实的 AI 助手。
+**核心优势：**
+- 🚀 **零依赖部署** — 单个 30MB 二进制文件，无需 Node.js/Python 运行时，**一行命令**安装即用
+- ☁️ **云中继加持** — 无需公网服务器、域名备案、HTTPS 证书，5 分钟接入企业微信/微信公众号
+- 🤖 **浏览器自动化** — 内置 CDP 协议控制，快照-操作模式，无需 Puppeteer/Playwright 安装
+- 🛠️ **75+ MCP 工具** — 覆盖文件、Shell、系统、网络、日历、Git、GitHub 等全场景
+- 🌏 **中国平台原生支持** — 钉钉、飞书、企业微信、微信公众号开箱即用
+- 🔌 **嵌入式友好** — 可编译到 ARM/MIPS，轻松部署到树莓派、路由器、NAS
+- 🧠 **多 AI 后端** — 集成 Claude、DeepSeek、Kimi、MiniMax、Gemini 等 [15 种 AI 服务](docs/ai-providers.md)，按需切换
+
+支持企业微信、飞书、钉钉、Slack、Telegram、Discord、WhatsApp、LINE、Teams 等 [19 种聊天平台](docs/chat-platforms.md) 接入，既可通过**云中继 5 分钟秒接**，也可 [OpenClaw](docs/openclaw-reference.md) 式**传统自建部署**。查看 [开发路线图](docs/roadmap.md) 了解更多功能规划。
+
+> 🐕⚡ **为什么叫"灵小缇"？** 灵缇犬（Greyhound）是世界上跑得最快的犬，以敏捷、忠诚著称。灵小缇同样敏捷高效，是你忠实的 AI 助手。
 
 ## 安装
 
 ```bash
 curl -fsSL https://cli.lingti.com/install.sh | bash -s -- --bot
+```
+
+安装完成后，通过交互式向导完成首次配置：
+
+```bash
+lingti-bot onboard
+```
+
+配置保存后，无需任何参数即可启动：
+
+```bash
+lingti-bot relay
+```
+
+也可以通过命令行参数直接启动，适合运行多个实例或覆盖已有配置：
+
+```bash
+lingti-bot relay --platform wecom --provider deepseek --api-key sk-xxx
 ```
 
 ## 样例
@@ -35,6 +68,16 @@ curl -fsSL https://cli.lingti.com/install.sh | bash -s -- --bot
 <br>
 <img src="docs/images/demo-terminal.png" alt="Terminal Demo" />
 <p><sub>克隆代码后直接编译运行，配合 DeepSeek 模型，实时处理钉钉消息</sub></p>
+
+### 定时任务 — AI 自动创建 Cron Job
+
+> 用自然语言创建定时任务 — 告诉 AI 你想要什么，剩下的交给它
+
+<p align="center">
+<img src="docs/images/demo-cron-wecom.png" alt="AI 创建定时任务演示" width="720" />
+</p>
+
+在企业微信中对 AI 说一句话，即可创建复杂的定时任务。支持 Cron 表达式调度、macOS 系统通知、Shell 脚本执行等，真正实现无人值守自动化。
 
 ### 企业微信 AI 文件助手
 
@@ -133,19 +176,35 @@ make build
 
 支持国内外主流企业消息平台，让团队在熟悉的工具中直接与 AI 对话。
 
-| 平台 | 协议 | 接入方式 | 状态 |
-|------|------|----------|------|
-| **企业微信** | 回调 API | 云中继 / 自建 | ✅ |
-| **飞书/Lark** | WebSocket | 一键接入 | ✅ |
-| **微信公众号** | 云中继 | 10秒接入 | ✅ |
-| **Slack** | Socket Mode | 一键接入 | ✅ |
-| **Telegram** | Bot API | 一键接入 | ✅ |
-| **Discord** | Gateway | 一键接入 | ✅ |
-| **钉钉** | Stream Mode | 一键接入 | ✅ |
+| 平台 | 协议 | 接入方式 | 文件发送 | 状态 |
+|------|------|----------|---------|------|
+| **企业微信** | 回调 API | 云中继 / 自建 | ✅ 全格式 | ✅ |
+| **微信公众号** | 云中继 | 10秒接入 | ✅ 图片/语音/视频 | ✅ |
+| **钉钉** | Stream Mode | 一键接入 | 🔜 计划中 | ✅ |
+| **飞书/Lark** | WebSocket | 一键接入 | 🔜 计划中 | ✅ |
+| **Slack** | Socket Mode | 一键接入 | 🔜 计划中 | ✅ |
+| **Telegram** | Bot API | 一键接入 | 🔜 计划中 | ✅ |
+| **Discord** | Gateway | 一键接入 | 🔜 计划中 | ✅ |
+| **WhatsApp** | Webhook + Graph API | 自建 | 🔜 计划中 | ✅ |
+| **LINE** | Webhook + Push API | 自建 | 🔜 计划中 | ✅ |
+| **Microsoft Teams** | Bot Framework | 自建 | 🔜 计划中 | ✅ |
+| **Matrix / Element** | HTTP Sync | 自建 | 🔜 计划中 | ✅ |
+| **Google Chat** | Webhook + REST | 自建 | 🔜 计划中 | ✅ |
+| **Mattermost** | WebSocket + REST | 自建 | 🔜 计划中 | ✅ |
+| **iMessage** | BlueBubbles | 自建 | 🔜 计划中 | ✅ |
+| **Signal** | signal-cli REST | 自建 | 🔜 计划中 | ✅ |
+| **Twitch** | IRC | 自建 | — | ✅ |
+| **NOSTR** | WebSocket Relays | 自建 | 🔜 计划中 | ✅ |
+| **Zalo** | Webhook + REST | 自建 | 🔜 计划中 | ✅ |
+| **Nextcloud Talk** | HTTP Polling | 自建 | 🔜 计划中 | ✅ |
+
+> 文件发送详情（配置方法、支持的文件类型、限制）：[文件发送指南](docs/file-sending.md)
+
+> 完整列表（含配置参数、环境变量）：[聊天平台列表](docs/chat-platforms.md)
 
 **云中继优势：** 无需公网服务器、无需域名备案、无需 HTTPS 证书、无需防火墙配置，5 分钟完成接入。
 
-### MCP 工具集 — 70+ 本地系统工具
+### MCP 工具集 — 75+ 本地系统工具
 
 覆盖日常工作的方方面面，让 AI 成为你的全能助手。
 
@@ -168,6 +227,35 @@ make build
 | **Git** | 4 | 状态、日志、差异、分支 |
 | **GitHub** | 6 | PR 列表/详情、Issue 管理、仓库信息 |
 | **浏览器自动化** | 12 | 快照、点击、输入、截图、标签页管理 |
+| **定时任务** | 5 | 创建、列表、删除、暂停、恢复计划任务 |
+
+### 定时任务 — 自动化你的工作流
+
+使用标准 Cron 表达式调度周期性任务，支持两种模式：
+
+| | **AI 智能任务** (`prompt`) | **静态消息** (`message`) |
+|--|---------------------------|------------------------|
+| **内容** | 每次触发生成全新内容 | 每次发送相同文本 |
+| **工具调用** | 可调用 web_search、天气、日历等所有工具 | 无 |
+| **适用场景** | 新闻摘要、每日简报、随机鸡汤、学习提醒 | 固定提醒、打卡通知 |
+| **示例** | "搜索最新AI新闻整理摘要" | "该喝水了！" |
+
+**AI 智能任务** — 每次触发运行完整 AI 对话，内容永远不重复：
+
+```
+"每小时43分发一段鸡汤激励我写代码"
+"每天早上9点搜索AI新闻发给我摘要"
+"每天中午教我一个Go语言技巧"
+```
+
+**静态消息** — 每次发送固定文本：
+
+```
+"每天早上9点提醒我开站会"
+"每小时提醒我喝水"
+```
+
+> 详细文档（完整示例、Cron 表达式、管理命令）：[定时任务指南](docs/cron-jobs.md)
 
 ### 智能对话 — 多轮记忆，自然交流
 
@@ -177,7 +265,7 @@ make build
 |------|------|
 | **上下文记忆** | 每个用户独立的对话上下文，最近 50 条消息 |
 | **自动过期** | 对话 60 分钟无活动后自动清除 |
-| **多 AI 后端** | Claude、DeepSeek、Kimi、MiniMax 按需切换 |
+| **多 AI 后端** | [15 种 AI 服务](docs/ai-providers.md)按需切换 |
 | **对话管理** | `/new`、`/reset`、`新对话` 命令重置对话 |
 
 ### 语音交互 — 解放双手，畅快对话
@@ -197,14 +285,34 @@ make build
 
 **特点：** 本地语音识别（whisper-cpp）、多语言支持、唤醒词激活、连续对话模式。
 
+### Skills — 模块化能力扩展
+
+Skills 是模块化的能力包，教会 lingti-bot 如何使用外部工具。每个 Skill 是一个包含 `SKILL.md` 文件的目录，通过 YAML frontmatter 声明依赖和元数据，通过 Markdown 正文提供 AI 指令。
+
+```bash
+# 列出所有已发现的 Skills
+lingti-bot skills
+
+# 查看就绪状态
+lingti-bot skills check
+
+# 查看某个 Skill 的详细信息
+lingti-bot skills info github
+```
+
+内置 8 个 Skills：Discord、GitHub、Slack、Peekaboo（macOS UI 自动化）、Tmux、天气、1Password、Obsidian。支持用户自定义和项目级 Skills。
+
+详细文档：[Skills 指南](docs/skills.md)
+
 ### 功能速览表
 
 | 模块 | 说明 | 特点 |
 |------|------|------|
 | **MCP Server** | 标准 MCP 协议服务器 | 兼容 Claude Desktop、Cursor、Windsurf 等所有 MCP 客户端 |
-| **多平台消息网关** | 消息平台集成 | 微信公众号、企业微信、Slack、飞书一键接入，支持云中继 |
-| **MCP 工具集** | 70+ 本地系统工具 | 文件、Shell、系统、网络、日历、Git、GitHub 等全覆盖 |
-| **智能对话** | 多轮对话与记忆 | 上下文记忆、多 AI 后端（Claude/DeepSeek/Kimi/MiniMax） |
+| **多平台消息网关** | [19 种聊天平台](docs/chat-platforms.md) | 微信公众号、企业微信、Slack、飞书一键接入，支持云中继 |
+| **MCP 工具集** | 75+ 本地系统工具 | 文件、Shell、系统、网络、日历、Git、GitHub 等全覆盖 |
+| **Skills** | 模块化能力扩展 | 8 个内置 Skill，支持自定义和项目级扩展 |
+| **智能对话** | 多轮对话与记忆 | 上下文记忆、[15 种 AI 后端](docs/ai-providers.md) |
 | **语音交互** | 语音输入/输出 | 本地 whisper-cpp、OpenAI、ElevenLabs 多引擎支持 |
 
 ## 云中继：零门槛接入企业消息平台
@@ -431,13 +539,27 @@ lingti-bot router \
 
 | 平台 | 协议 | 状态 |
 |------|------|------|
-| **Slack** | Socket Mode | ✅ 已支持 |
+| **企业微信** | 回调 API | ✅ 已支持 |
+| **微信公众号** | 云中继 | ✅ 已支持 |
+| **钉钉** | Stream Mode | ✅ 已支持 |
 | **飞书/Lark** | WebSocket | ✅ 已支持 |
+| **Slack** | Socket Mode | ✅ 已支持 |
 | **Telegram** | Bot API | ✅ 已支持 |
 | **Discord** | Gateway | ✅ 已支持 |
-| **云中继** | WebSocket | ✅ 已支持 |
-| **钉钉** | Stream Mode | ✅ 已支持 |
-| **企业微信** | 回调 API | ✅ 已支持 |
+| **WhatsApp** | Webhook + Graph API | ✅ 已支持 |
+| **LINE** | Webhook + Push API | ✅ 已支持 |
+| **Microsoft Teams** | Bot Framework | ✅ 已支持 |
+| **Matrix / Element** | HTTP Sync | ✅ 已支持 |
+| **Google Chat** | Webhook + REST | ✅ 已支持 |
+| **Mattermost** | WebSocket + REST | ✅ 已支持 |
+| **iMessage** | BlueBubbles | ✅ 已支持 |
+| **Signal** | signal-cli REST | ✅ 已支持 |
+| **Twitch** | IRC | ✅ 已支持 |
+| **NOSTR** | WebSocket Relays | ✅ 已支持 |
+| **Zalo** | Webhook + REST | ✅ 已支持 |
+| **Nextcloud Talk** | HTTP Polling | ✅ 已支持 |
+
+> 完整列表：[聊天平台列表](docs/chat-platforms.md)
 
 ### 一键接入
 
@@ -461,21 +583,47 @@ export FEISHU_APP_SECRET="..."
 
 ### 多 AI 后端
 
-支持多种 AI 服务，按需切换：
+支持 **15 种 AI 服务**，涵盖国内外主流大模型平台，按需切换：
 
-| AI 服务 | 环境变量 |
-|---------|----------|
-| **Claude** (Anthropic) | `ANTHROPIC_API_KEY` |
-| **Kimi** (月之暗面) | `KIMI_API_KEY` |
-| **DeepSeek** | `DEEPSEEK_API_KEY` |
-| **MiniMax** | `ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL` |
+| # | Provider | 名称 | 默认模型 |
+|---|----------|------|----------|
+| 1 | `deepseek` | DeepSeek (推荐) | `deepseek-chat` |
+| 2 | `qwen` | 通义千问 (Qwen) | `qwen-plus` |
+| 3 | `claude` | Claude (Anthropic) | `claude-sonnet-4-20250514` |
+| 4 | `kimi` | Kimi / 月之暗面 | `moonshot-v1-8k` |
+| 5 | `minimax` | MiniMax / 海螺 AI | `MiniMax-Text-01` |
+| 6 | `doubao` | 豆包 (ByteDance) | `doubao-pro-32k` |
+| 7 | `zhipu` | 智谱 GLM | `glm-4-flash` |
+| 8 | `openai` | OpenAI (GPT) | `gpt-4o` |
+| 9 | `gemini` | Gemini (Google) | `gemini-2.0-flash` |
+| 10 | `yi` | 零一万物 (Yi) | `yi-large` |
+| 11 | `stepfun` | 阶跃星辰 (StepFun) | `step-2-16k` |
+| 12 | `baichuan` | 百川智能 (Baichuan) | `Baichuan4` |
+| 13 | `spark` | 讯飞星火 (iFlytek) | `generalv3.5` |
+| 14 | `siliconflow` | 硅基流动 (aggregator) | `Qwen/Qwen2.5-72B-Instruct` |
+| 15 | `grok` | Grok (xAI) | `grok-2-latest` |
+
+> 完整列表（含 API Key 获取链接、别名）：[AI 服务列表](docs/ai-providers.md)
+
+```bash
+# 使用命令行参数指定
+lingti-bot router --provider qwen --api-key "sk-xxx" --model "qwen-plus"
+
+# 覆盖默认模型
+lingti-bot relay --provider openai --api-key "sk-xxx" --model "gpt-4o-mini"
+```
 
 ### 详细文档
 
+- [AI 服务列表](docs/ai-providers.md) - 15 种 AI 服务详情、API Key 获取、别名
+- [聊天平台列表](docs/chat-platforms.md) - 19 种聊天平台详情、配置参数、环境变量
 - [命令行参考](docs/cli-reference.md) - 完整的命令行使用文档
+- [Skills 指南](docs/skills.md) - Skills 系统详解：创建、发现、配置
 - [Slack 集成指南](docs/slack-integration.md) - 完整的 Slack 应用配置教程
 - [飞书集成指南](docs/feishu-integration.md) - 飞书/Lark 应用配置教程
 - [企业微信集成指南](docs/wecom-integration.md) - 企业微信应用配置教程
+- [文件发送指南](docs/file-sending.md) - 各平台文件传输能力、配置与限制
+- [定时任务指南](docs/cron-jobs.md) - AI 智能任务 vs 静态消息、Cron 表达式、管理命令
 - [浏览器自动化指南](docs/browser-automation.md) - 快照-操作模式的浏览器控制
 - [OpenClaw 技术特性对比](docs/openclaw-feature-comparison.md) - 详细功能差异分析
 
@@ -483,7 +631,7 @@ export FEISHU_APP_SECRET="..."
 
 ## MCP 工具集
 
-灵小缇提供 **70+ MCP 工具**，覆盖日常工作的方方面面。包含全新的[浏览器自动化](docs/browser-automation.md)能力。
+灵小缇提供 **75+ MCP 工具**，覆盖日常工作的方方面面。包含全新的[浏览器自动化](docs/browser-automation.md)能力。
 
 ### 工具分类
 
@@ -956,6 +1104,86 @@ make status         # 查看服务状态
 # macOS 签名
 make codesign       # 代码签名（需要开发者证书）
 ```
+
+---
+
+## 命令行选项
+
+### 全局选项
+
+这些选项可用于所有命令，放在子命令之前使用。
+
+| 选项 | 简写 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--yes` | `-y` | **自动批准模式** - 跳过所有确认提示，直接执行操作 | `false` |
+| `--debug` | - | **调试模式** - 启用详细日志和浏览器截图 | `false` |
+| `--log <level>` | - | **日志级别** - silent, info, verbose, very-verbose | `info` |
+| `--debug-dir <path>` | - | **调试目录** - 保存调试截图的路径 | `/tmp/lingti-bot` |
+
+#### 自动批准模式 (`--yes`)
+
+启用后，AI 将立即执行文件写入、删除、Shell 命令等操作，无需每次询问确认。
+
+**适用场景：**
+- ✅ 批量文件处理
+- ✅ 代码生成和重构
+- ✅ 文档自动更新
+- ✅ CI/CD 自动化流程
+- ✅ 信任环境下的快速操作
+
+**不适用场景：**
+- ❌ 生产环境服务器
+- ❌ 共享系统
+- ❌ 首次尝试新操作
+- ❌ 涉及敏感数据
+
+**使用示例：**
+
+```bash
+# 启用自动批准
+lingti-bot --yes router --provider deepseek --api-key sk-xxx
+
+# 简写形式
+lingti-bot -y router --provider deepseek --api-key sk-xxx
+
+# 结合调试模式
+lingti-bot --yes --debug router --provider deepseek --api-key sk-xxx
+```
+
+**行为对比：**
+
+```bash
+# 不使用 --yes（默认）
+用户：保存这个文件到 config.yaml
+AI：  我已经准备好内容。是否确认保存到 config.yaml？
+用户：是的
+AI：  ✅ 已保存到 config.yaml
+
+# 使用 --yes
+用户：保存这个文件到 config.yaml
+AI：  ✅ 已保存到 config.yaml (247 字节)
+```
+
+**安全提示：**
+- 在 git 仓库中使用 `--yes` 最安全，可随时通过 `git diff` 查看变更
+- 建议先在测试目录中尝试 `--yes` 模式
+- 即使启用 `--yes`，危险操作（如 `rm -rf /`）仍会被拒绝
+
+详细文档：
+- [自动批准完整指南](docs/auto-approval.md)
+- [快速参考](docs/auto-approval-quickref.md)
+
+#### 调试模式 (`--debug`)
+
+启用后自动设置日志级别为 `very-verbose`，并在浏览器操作出错时保存截图。
+
+```bash
+lingti-bot --debug router --provider deepseek --api-key sk-xxx
+```
+
+详细文档：
+- [浏览器调试指南](docs/browser-debug.md)
+- [快速参考](docs/browser-debug-quickref.md)
 
 ---
 
